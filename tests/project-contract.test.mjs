@@ -15,11 +15,41 @@ test("Firefox extension has capture permissions and a stable local id", async ()
 test("browser and native sides agree on the capture contract", async () => {
   const background = await text("extension/background.js");
   const model = await text("src-tauri/src/model.rs");
-  for (const field of ["token", "url", "dataBase64", "name", "website", "annotation", "tags"]) {
+  for (const field of ["token", "url", "dataBase64", "name", "website", "annotation", "tags", "mediaType", "extension"]) {
     assert.match(background, new RegExp(`\\b${field}\\b`));
   }
   assert.match(model, /rename_all = "camelCase"/);
   assert.match(model, /struct CaptureRequest/);
+});
+
+test("empty library, Firefox video capture, and download progress are wired", async () => {
+  const frontend = await text("frontend/app.js");
+  const markup = await text("frontend/index.html");
+  const styles = await text("frontend/styles.css");
+  const background = await text("extension/background.js");
+  const content = await text("extension/content.js");
+  const manifest = JSON.parse(await text("extension/manifest.json"));
+  const native = await text("src-tauri/src/lib.rs");
+  const server = await text("src-tauri/src/server.rs");
+  const library = await text("src-tauri/src/library.rs");
+  assert.match(frontend, /libraryIsCompletelyEmpty[\s\S]*\? "" :/);
+  assert.match(frontend, /welcome\.hidden = !libraryIsCompletelyEmpty/);
+  assert.match(background, /contexts: \["image", "video"\]/);
+  assert.match(background, /mediaType: info\.mediaType === "video"/);
+  assert.match(content, /target\.closest\("img, video"\)/);
+  assert.match(content, /video\.draggable = true/);
+  assert.equal(manifest.version, "0.1.1");
+  assert.match(markup, /id="download-progress-stack"/);
+  assert.match(styles, /\.download-progress-track/);
+  assert.match(frontend, /get_download_progress/);
+  assert.match(frontend, /window\.setInterval\(refreshDownloadProgress, 300\)/);
+  assert.match(native, /fn get_download_progress/);
+  assert.match(server, /\/api\/v1\/downloads/);
+  assert.match(library, /response\.chunk\(\)\.await/);
+  assert.match(library, /ingest_video_staging/);
+  assert.match(library, /"downloading"/);
+  assert.match(library, /"processing"/);
+  assert.match(library, /"complete"/);
 });
 
 test("desktop bootstrap prebuilds stable outbound drag files", async () => {

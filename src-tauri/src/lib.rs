@@ -6,8 +6,8 @@ pub mod server;
 use library::Library;
 #[cfg(feature = "desktop")]
 use model::{
-    Asset, AssetPatch, Bootstrap, CaptureRequest, ExportSummary, ExternalDragFile, Folder,
-    ImportSummary,
+    Asset, AssetPatch, Bootstrap, CaptureRequest, DownloadProgress, ExportSummary,
+    ExternalDragFile, Folder, ImportSummary,
 };
 #[cfg(feature = "desktop")]
 use std::path::PathBuf;
@@ -99,6 +99,12 @@ fn get_bootstrap(state: tauri::State<'_, AppState>) -> Result<Bootstrap, String>
 
 #[cfg(feature = "desktop")]
 #[tauri::command]
+fn get_download_progress(state: tauri::State<'_, AppState>) -> Vec<DownloadProgress> {
+    state.library.download_progress()
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
 async fn import_directory(
     path: String,
     state: tauri::State<'_, AppState>,
@@ -125,6 +131,8 @@ async fn import_url(
         website: String::new(),
         annotation: String::new(),
         tags: vec!["browser drop".to_owned()],
+        media_type: String::new(),
+        extension: String::new(),
     };
     library.capture(request).await
 }
@@ -375,6 +383,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_bootstrap,
+            get_download_progress,
             import_directory,
             import_url,
             search_assets,

@@ -461,7 +461,19 @@ body.phoenix-dragging .nav-item[data-collection="trash"] { outline-color: color-
 .connection-status { display: grid; grid-template-columns: 9px 1fr auto; align-items: center; gap: 7px; border-top: 1px solid var(--line-soft); padding-top: 12px; color: var(--text-soft); font-size: 10px; }
 .connection-status i { width: 7px; height: 7px; border-radius: 50%; background: #51b97a; box-shadow: 0 0 0 3px color-mix(in srgb, #51b97a 16%, transparent); }
 .connection-status strong { color: var(--text); font-family: ui-monospace, monospace; font-size: 9px; }
-.toast-stack { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: grid; gap: 8px; }
+.status-stack { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: grid; width: min(390px, calc(100vw - 36px)); gap: 8px; pointer-events: none; }
+.download-progress-stack, .toast-stack { display: grid; gap: 8px; }
+.download-progress { overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 11px; padding: 11px 13px; background: var(--surface-strong); box-shadow: var(--shadow); animation: toast-in .2s ease-out; }
+.download-progress header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.download-progress strong, .download-progress small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-progress strong { font-size: 11px; }
+.download-progress small { color: var(--text-soft); font-size: 9px; }
+.download-progress-track { overflow: hidden; height: 5px; margin-top: 9px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.download-progress-track i { display: block; width: var(--download-percent, 0%); height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #ffad66); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent); transition: width .2s ease; }
+.download-progress.indeterminate .download-progress-track i { width: 42%; animation: download-indeterminate 1.15s ease-in-out infinite; }
+.download-progress.complete { border-color: color-mix(in srgb, #50bd7a 48%, var(--line)); }
+.download-progress.error { border-color: #d85b5b; }
+@keyframes download-indeterminate { from { transform: translateX(-115%); } to { transform: translateX(340%); } }
 .toast { min-width: 260px; max-width: 390px; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; background: var(--surface-strong); box-shadow: var(--shadow); font-size: 11px; animation: toast-in .2s ease-out; }
 .toast strong { display: block; margin-bottom: 2px; }
 .toast span { color: var(--text-soft); }

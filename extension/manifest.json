@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Phoenix Project Capture",
-  "version": "0.1.0",
-  "description": "Drag images from Firefox into your local Phoenix Project library.",
+  "version": "0.1.1",
+  "description": "Save images and videos from Firefox into your local Phoenix Project library.",
   "icons": {
     "32": "icons/phoenix.svg",
     "48": "icons/phoenix.svg",

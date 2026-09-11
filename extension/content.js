@@ -1,18 +1,48 @@
 (() => {
+  const MAX_INLINE_VIDEO_BYTES = 20 * 1024 * 1024;
   let dragged = null;
   let hideTimer = 0;
   let dock;
   let label;
 
+  const makeVideosDraggable = (root = document) => {
+    root.querySelectorAll?.("video").forEach((video) => {
+      video.draggable = true;
+    });
+  };
+  const videoObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches("video")) node.draggable = true;
+        makeVideosDraggable(node);
+      }
+    }
+  });
+  videoObserver.observe(document, { childList: true, subtree: true });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => makeVideosDraggable(), { once: true });
+  } else {
+    makeVideosDraggable();
+  }
+
+  browser.runtime.onMessage.addListener((message) => {
+    if (message?.type !== "phoenix-read-video" || !/^blob:/i.test(message.url || "")) return undefined;
+    return readBlobVideo(message.url);
+  });
+
   document.addEventListener("dragstart", (event) => {
-    const image = imageAt(event.target);
-    if (!image) return;
-    const url = image.currentSrc || image.src;
-    if (!url || !/^https?:\/\//i.test(url)) return;
+    const media = mediaAt(event.target);
+    if (!media) return;
+    const mediaType = media instanceof HTMLVideoElement ? "video" : "image";
+    const url = media.currentSrc || media.src;
+    if (!url || (!/^https?:\/\//i.test(url) && !(mediaType === "video" && /^blob:/i.test(url)))) return;
     dragged = {
       url,
-      name: image.alt?.trim() || titleFromUrl(url),
+      name: media.alt?.trim() || media.title?.trim() || media.getAttribute("aria-label")?.trim() || titleFromUrl(url),
       website: location.href,
+      mediaType,
+      extension: extensionFromUrl(url),
     };
     showDock();
   }, true);
@@ -37,10 +67,21 @@
     dragged = null;
     dock.classList.add("is-saving");
     label.textContent = "Saving…";
+    if (payload.mediaType === "video" && /^blob:/i.test(payload.url)) {
+      const resolved = await readBlobVideo(payload.url);
+      if (!resolved.ok) {
+        dock.classList.remove("is-saving", "is-over");
+        dock.classList.add("is-error");
+        label.textContent = resolved.error;
+        hideTimer = window.setTimeout(hideDock, 3600);
+        return;
+      }
+      Object.assign(payload, resolved, { url: "" });
+    }
     const result = await browser.runtime.sendMessage({ type: "phoenix-capture", payload });
     dock.classList.remove("is-saving", "is-over");
     dock.classList.toggle("is-error", !result?.ok);
-    label.textContent = result?.ok ? `Saved ${result.asset?.name || "image"}` : (result?.error || "Capture failed");
+    label.textContent = result?.ok ? `Saved ${result.asset?.name || "item"}` : (result?.error || "Capture failed");
     hideTimer = window.setTimeout(hideDock, result?.ok ? 1400 : 3600);
   }, true);
 
@@ -49,9 +90,9 @@
     if (!dock?.classList.contains("is-saving")) hideTimer = window.setTimeout(hideDock, 220);
   }, true);
 
-  function imageAt(target) {
-    if (target instanceof HTMLImageElement) return target;
-    return target instanceof Element ? target.closest("img") : null;
+  function mediaAt(target) {
+    if (target instanceof HTMLImageElement || target instanceof HTMLVideoElement) return target;
+    return target instanceof Element ? target.closest("img, video") : null;
   }
 
   function isOverDock(event) {
@@ -65,6 +106,55 @@
     } catch {
       return "Captured image";
     }
+  }
+
+  function extensionFromUrl(value) {
+    try {
+      const match = new URL(value).pathname.match(/\.([a-z0-9]{2,5})$/i);
+      return match?.[1]?.toLowerCase() || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function extensionFromMime(value) {
+    const type = String(value || "").split(";")[0].toLowerCase();
+    return ({
+      "video/mp4": "mp4",
+      "video/quicktime": "mov",
+      "video/webm": "webm",
+      "video/x-matroska": "mkv",
+      "video/ogg": "ogv",
+      "video/x-msvideo": "avi",
+    })[type] || "";
+  }
+
+  async function readBlobVideo(url) {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      if (!blob.type.startsWith("video/")) return { ok: false, error: "The selected item is not a supported video." };
+      if (blob.size > MAX_INLINE_VIDEO_BYTES) {
+        return { ok: false, error: "This temporary browser video is larger than 20 MB and has no direct download link." };
+      }
+      return {
+        ok: true,
+        dataBase64: await blobToDataUrl(blob),
+        extension: extensionFromMime(blob.type),
+        mediaType: "video",
+      };
+    } catch {
+      return { ok: false, error: "Firefox could not read this temporary browser video." };
+    }
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error("Could not read video"));
+      reader.readAsDataURL(blob);
+    });
   }
 
   function showDock() {

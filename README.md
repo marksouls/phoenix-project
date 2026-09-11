@@ -9,7 +9,7 @@ Phoenix is a visual library for Linux. It gives images, videos, GIFs, and text f
 - Organizes visual files with folders, tags, ratings, search, and sorting.
 - Imports and exports with normal drag and drop on Linux and Wayland.
 - Opens images, GIFs, videos, and text files in a built-in viewer.
-- Captures images from Firefox with the included browser extension (To be released in the Firefox extensions).
+- Captures images and videos from Firefox with the included browser extension.
 - Shows useful generation information stored inside supported AI images.
 - Offers customizable layouts, previews, navigation, and animated themes.
 - Keeps the library local on your computer.
@@ -33,7 +33,7 @@ Phoenix can read supported generation details embedded in images and present the
 
 ## Download
 
-The current version is **0.1.32**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
+The current version is **0.1.33**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
 
 - **Ubuntu package:** install the `.deb` file through the software installer.
 - **Portable version:** make the `.AppImage` executable and open it directly.
@@ -43,8 +43,9 @@ Phoenix currently targets modern Ubuntu desktops using GNOME and Wayland.
 
 ## Firefox extension
 
-The optional extension sends images from Firefox directly to Phoenix. Open Phoenix's Firefox connection section, then follow the pairing instructions shown in the app.
-This is yet to be released in the official Mozilla add-ons store and is unsigned right now
+The optional extension sends images and videos from Firefox directly to Phoenix. Open Phoenix's Firefox connection section, then follow the pairing instructions shown in the app.
+
+The extension is not yet available from Mozilla Add-ons and the downloadable archive is currently unsigned.
 
 ## Future roadmap
 

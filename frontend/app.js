@@ -185,6 +185,7 @@ async function command(name, args = {}) {
   if (invoke) return invoke(name, args);
   const routes = {
     get_bootstrap: ["/dev/bootstrap", "GET"],
+    get_download_progress: ["/dev/download-progress", "GET"],
     import_directory: ["/dev/import", "POST"],
     import_url: ["/dev/capture-url", "POST"],
     search_assets: [`/dev/search?q=${encodeURIComponent(args.query || "")}&wide=${args.wide ? "1" : "0"}`, "GET"],
@@ -421,12 +422,13 @@ function updateViewModeButton() {
 
 function render() {
   const assets = filteredAssets();
+  const libraryIsCompletelyEmpty = state.assets.length === 0 && state.trashedAssets.length === 0;
   gallery.classList.toggle("grid-mode", state.viewMode === "grid");
   gallery.classList.toggle("list-mode", state.viewMode === "list");
-  gallery.innerHTML = assets.length ? assets.map(assetCardMarkup).join("") : `
+  gallery.innerHTML = assets.length ? assets.map(assetCardMarkup).join("") : libraryIsCompletelyEmpty ? "" : `
       <div class="collection-empty"><span>${state.collection === "trash" ? "⌫" : "◇"}</span>${escapeHtml(emptyCollectionMessage())}</div>`;
 
-  welcome.hidden = state.assets.length > 0 || state.trashedAssets.length > 0;
+  welcome.hidden = !libraryIsCompletelyEmpty;
   $("#all-count").textContent = state.assets.length;
   $("#trash-count").textContent = state.trashedAssets.length;
   $("#untagged-count").textContent = state.assets.filter((asset) => asset.tags.length === 0).length;
@@ -1199,20 +1201,20 @@ function replaceAsset(asset, { refreshExternalDrag = true } = {}) {
 
 function nameFromUrl(value) {
   try {
-    return decodeURIComponent(new URL(value).pathname.split("/").filter(Boolean).pop() || "Browser image")
+    return decodeURIComponent(new URL(value).pathname.split("/").filter(Boolean).pop() || "Browser item")
       .replace(/\.[a-z0-9]{2,5}$/i, "");
   } catch {
-    return "Browser image";
+    return "Browser item";
   }
 }
 
 async function importUrl(url) {
-  toast("Browser import started", "Downloading the original image into Phoenix.");
+  toast("Browser import started", "Downloading the original item into Phoenix.");
   try {
     const asset = await command("import_url", { url, name: nameFromUrl(url) });
     await loadBootstrap();
     setSingleSelection(asset.id);
-    toast("Browser image imported", asset.name);
+    toast("Browser item imported", asset.name);
   } catch (error) {
     toast("Browser import failed", String(error), true);
   }
@@ -1291,6 +1293,52 @@ function toast(title, message, isError = false) {
   element.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span>`;
   $("#toast-stack").append(element);
   setTimeout(() => element.remove(), 4800);
+}
+
+const completedDownloadIds = new Set();
+let refreshingDownloadProgress = false;
+
+function renderDownloadProgress(downloads) {
+  const container = $("#download-progress-stack");
+  container.innerHTML = downloads.map((download) => {
+    const received = Number(download.receivedBytes || 0);
+    const total = Number(download.totalBytes || 0);
+    const determined = total > 0;
+    const percent = determined ? Math.max(0, Math.min(100, received / total * 100)) : 0;
+    const terminal = download.state === "complete" || download.state === "error";
+    const detail = download.state === "processing"
+      ? download.message
+      : download.state === "complete"
+        ? download.message
+        : download.state === "error"
+          ? download.message
+          : determined
+            ? `${formatBytes(received)} of ${formatBytes(total)} · ${Math.round(percent)}%`
+            : `${formatBytes(received)} downloaded`;
+    return `<section class="download-progress ${escapeHtml(download.state)}${!determined && !terminal ? " indeterminate" : ""}" style="--download-percent:${percent}%">
+      <header><strong>${escapeHtml(download.name || "Video download")}</strong><small>${escapeHtml(detail || "Downloading video…")}</small></header>
+      <div class="download-progress-track" aria-hidden="true"><i></i></div>
+    </section>`;
+  }).join("");
+}
+
+async function refreshDownloadProgress() {
+  if (!applicationInitialized || refreshingDownloadProgress) return;
+  refreshingDownloadProgress = true;
+  try {
+    const downloads = await command("get_download_progress");
+    const list = Array.isArray(downloads) ? downloads : (downloads?.data || []);
+    renderDownloadProgress(list);
+    if (list.some((download) => download.state === "complete" && !completedDownloadIds.has(download.id))) {
+      list.filter((download) => download.state === "complete")
+        .forEach((download) => completedDownloadIds.add(download.id));
+      await refreshLibrarySilently();
+    }
+  } catch {
+    // Progress is supplemental; normal import errors remain visible as notifications.
+  } finally {
+    refreshingDownloadProgress = false;
+  }
 }
 
 function clearSelection() {
@@ -2734,3 +2782,4 @@ $("#startup-retry").addEventListener("click", () => {
 initializeApplication();
 
 window.setInterval(refreshLibrarySilently, 1800);
+window.setInterval(refreshDownloadProgress, 300);

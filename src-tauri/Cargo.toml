@@ -1,6 +1,6 @@
 [package]
 name = "phoenix-project"
-version = "0.1.32"
+version = "0.1.33"
 description = "Linux-native visual asset library"
 authors = ["Phoenix Project"]
 edition = "2024"

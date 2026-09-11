@@ -47,6 +47,7 @@ pub fn start(library: Arc<Library>) {
 
             let app = Router::new()
                 .route("/api/v1/health", get(health))
+                .route("/api/v1/downloads", get(downloads))
                 .route("/api/v1/capture", post(capture))
                 .route("/api/v1/assets/{id}/thumbnail", get(thumbnail))
                 .route("/api/v1/assets/{id}/original", get(original))
@@ -71,6 +72,10 @@ pub fn start(library: Arc<Library>) {
 
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"status": "ok", "name": "Phoenix Project", "apiVersion": 1}))
+}
+
+async fn downloads(State(library): State<Arc<Library>>) -> Json<serde_json::Value> {
+    Json(json!({"status": "success", "data": library.download_progress()}))
 }
 
 async fn capture(

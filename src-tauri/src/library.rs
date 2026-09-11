@@ -1,6 +1,6 @@
 use crate::model::{
-    Asset, AssetPatch, Bootstrap, CaptureRequest, ComfyUiMetadata, ComfyUiSampler, ExportSummary,
-    ExternalDragFile, Folder, ImportSummary,
+    Asset, AssetPatch, Bootstrap, CaptureRequest, ComfyUiMetadata, ComfyUiSampler,
+    DownloadProgress, ExportSummary, ExternalDragFile, Folder, ImportSummary,
 };
 use base64::Engine;
 use chrono::{Datelike, Local, NaiveDateTime, TimeZone};
@@ -9,9 +9,11 @@ use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Cursor;
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -21,6 +23,7 @@ pub struct Library {
     db_path: PathBuf,
     token: String,
     suggested_import_path: Option<PathBuf>,
+    downloads: Arc<Mutex<HashMap<String, DownloadProgress>>>,
 }
 
 impl Library {
@@ -45,6 +48,7 @@ impl Library {
             root,
             token,
             suggested_import_path,
+            downloads: Arc::new(Mutex::new(HashMap::new())),
         };
         library.initialize_schema()?;
         library.repair_oriented_thumbnails()?;
@@ -395,6 +399,47 @@ impl Library {
 
     pub fn token(&self) -> &str {
         &self.token
+    }
+
+    fn update_download(
+        &self,
+        id: &str,
+        name: &str,
+        received_bytes: u64,
+        total_bytes: Option<u64>,
+        state: &str,
+        message: &str,
+    ) {
+        let finished_at = matches!(state, "complete" | "error").then(unix_millis);
+        let progress = DownloadProgress {
+            id: id.to_owned(),
+            name: sanitize_text(name, 240),
+            received_bytes,
+            total_bytes,
+            state: state.to_owned(),
+            message: sanitize_text(message, 500),
+            finished_at,
+        };
+        self.downloads
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(id.to_owned(), progress);
+    }
+
+    pub fn download_progress(&self) -> Vec<DownloadProgress> {
+        let now = unix_millis();
+        let mut downloads = self
+            .downloads
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        downloads.retain(|_, progress| {
+            progress
+                .finished_at
+                .is_none_or(|finished| now.saturating_sub(finished) < 7_000)
+        });
+        let mut progress: Vec<_> = downloads.values().cloned().collect();
+        progress.sort_by(|left, right| left.id.cmp(&right.id));
+        progress
     }
 
     pub fn bootstrap(&self) -> Result<Bootstrap, String> {
@@ -971,7 +1016,17 @@ impl Library {
                 if extension == "txt" {
                     self.ingest_text_bytes(&bytes, &name, created_at, modified_at)
                 } else if is_video_extension(&extension) {
-                    self.ingest_video_bytes(&bytes, &name, &extension, created_at, modified_at)
+                    self.ingest_video_bytes(
+                        &bytes,
+                        &name,
+                        &extension,
+                        "",
+                        "",
+                        "",
+                        &[],
+                        created_at,
+                        modified_at,
+                    )
                 } else {
                     self.ingest_bytes(&bytes, &name, "", "", "", &[], created_at, modified_at)
                 }
@@ -1118,59 +1173,241 @@ impl Library {
             return Err("Invalid pairing token".to_owned());
         }
 
-        let bytes = if !capture.data_base64.is_empty() {
+        let name = if capture.name.trim().is_empty() {
+            if capture.media_type.eq_ignore_ascii_case("video") {
+                "Captured video"
+            } else {
+                "Captured image"
+            }
+        } else {
+            capture.name.trim()
+        };
+
+        if !capture.data_base64.is_empty() {
             let payload = capture
                 .data_base64
                 .split_once(',')
                 .map(|(_, value)| value)
                 .unwrap_or(&capture.data_base64);
-            base64::engine::general_purpose::STANDARD
+            let bytes = base64::engine::general_purpose::STANDARD
                 .decode(payload)
-                .map_err(|_| "Captured image data is not valid base64".to_owned())?
-        } else {
-            validate_remote_url(&capture.url)?;
-            let response = reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::limited(5))
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .map_err(to_string)?
-                .get(&capture.url)
-                .header(reqwest::header::USER_AGENT, "Phoenix-Project/0.1")
-                .header(
-                    reqwest::header::ACCEPT,
-                    "image/avif,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.5",
-                )
-                .send()
-                .await
-                .map_err(to_string)?
-                .error_for_status()
-                .map_err(to_string)?;
-            if response.content_length().unwrap_or(0) > 50 * 1024 * 1024 {
-                return Err("Capture exceeds the 50 MB limit".to_owned());
+                .map_err(|_| "Captured media data is not valid base64".to_owned())?;
+            if bytes.len() > 50 * 1024 * 1024 {
+                return Err("Inline capture exceeds the 50 MB limit".to_owned());
             }
-            response.bytes().await.map_err(to_string)?.to_vec()
-        };
-
-        if bytes.len() > 50 * 1024 * 1024 {
-            return Err("Capture exceeds the 50 MB limit".to_owned());
+            if capture.media_type.eq_ignore_ascii_case("video") {
+                let extension = capture_video_extension(&capture, "").ok_or_else(|| {
+                    "Phoenix could not determine this video's file format".to_owned()
+                })?;
+                let progress_id = Uuid::new_v4().to_string();
+                let size = bytes.len() as u64;
+                self.update_download(
+                    &progress_id,
+                    name,
+                    size,
+                    Some(size),
+                    "processing",
+                    "Adding video to the library…",
+                );
+                let result = self.ingest_video_bytes(
+                    &bytes,
+                    name,
+                    &extension,
+                    &capture.url,
+                    &capture.website,
+                    &capture.annotation,
+                    &capture.tags,
+                    None,
+                    None,
+                );
+                return match result {
+                    Ok(IngestOutcome::Imported(asset)) | Ok(IngestOutcome::Duplicate(asset)) => {
+                        self.update_download(
+                            &progress_id,
+                            name,
+                            size,
+                            Some(size),
+                            "complete",
+                            "Video saved to Phoenix",
+                        );
+                        Ok(asset)
+                    }
+                    Err(error) => {
+                        self.update_download(&progress_id, name, size, Some(size), "error", &error);
+                        Err(error)
+                    }
+                };
+            }
+            return match self.ingest_bytes(
+                &bytes,
+                name,
+                &capture.url,
+                &capture.website,
+                &capture.annotation,
+                &capture.tags,
+                None,
+                None,
+            )? {
+                IngestOutcome::Imported(asset) | IngestOutcome::Duplicate(asset) => Ok(asset),
+            };
         }
 
-        let name = if capture.name.trim().is_empty() {
-            "Captured image"
+        validate_remote_url(&capture.url)?;
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .timeout(std::time::Duration::from_secs(60 * 30))
+            .build()
+            .map_err(to_string)?;
+        let mut response = client
+            .get(&capture.url)
+            .header(reqwest::header::USER_AGENT, "Phoenix-Project/0.1")
+            .header(
+                reqwest::header::ACCEPT,
+                "video/*,image/avif,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.5",
+            )
+            .send()
+            .await
+            .map_err(to_string)?
+            .error_for_status()
+            .map_err(to_string)?;
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        let video_extension = capture_video_extension(&capture, &content_type);
+        let video = capture.media_type.eq_ignore_ascii_case("video")
+            || content_type.starts_with("video/")
+            || video_extension.is_some();
+
+        if video {
+            let extension = video_extension
+                .ok_or_else(|| "Phoenix could not determine this video's file format".to_owned())?;
+            let total = response.content_length();
+            const MAX_VIDEO_CAPTURE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+            let progress_id = Uuid::new_v4().to_string();
+            self.update_download(
+                &progress_id,
+                name,
+                0,
+                total,
+                "downloading",
+                "Starting download…",
+            );
+            if total.is_some_and(|size| size > MAX_VIDEO_CAPTURE_BYTES) {
+                let error = "Video capture exceeds the 4 GB limit";
+                self.update_download(&progress_id, name, 0, total, "error", error);
+                return Err(error.to_owned());
+            }
+
+            let staging_path = self
+                .root
+                .join(".staging")
+                .join(format!("download-{progress_id}"));
+            let mut staging = match tokio::fs::File::create(&staging_path).await {
+                Ok(file) => file,
+                Err(error) => {
+                    self.update_download(&progress_id, name, 0, total, "error", &error.to_string());
+                    return Err(error.to_string());
+                }
+            };
+            let mut received = 0_u64;
+            let download_result: Result<(), String> = async {
+                while let Some(chunk) = response.chunk().await.map_err(to_string)? {
+                    received = received.saturating_add(chunk.len() as u64);
+                    if received > MAX_VIDEO_CAPTURE_BYTES {
+                        return Err("Video capture exceeds the 4 GB limit".to_owned());
+                    }
+                    staging.write_all(&chunk).await.map_err(to_string)?;
+                    self.update_download(
+                        &progress_id,
+                        name,
+                        received,
+                        total,
+                        "downloading",
+                        "Downloading video…",
+                    );
+                }
+                staging.flush().await.map_err(to_string)?;
+                Ok(())
+            }
+            .await;
+            drop(staging);
+            if let Err(error) = download_result {
+                let _ = tokio::fs::remove_file(&staging_path).await;
+                self.update_download(&progress_id, name, received, total, "error", &error);
+                return Err(error);
+            }
+
+            self.update_download(
+                &progress_id,
+                name,
+                received,
+                total.or(Some(received)),
+                "processing",
+                "Adding video to the library…",
+            );
+            let result = self.ingest_video_staging(
+                &staging_path,
+                name,
+                &extension,
+                &capture.url,
+                &capture.website,
+                &capture.annotation,
+                &capture.tags,
+                None,
+                None,
+            );
+            match result {
+                Ok(IngestOutcome::Imported(asset)) | Ok(IngestOutcome::Duplicate(asset)) => {
+                    self.update_download(
+                        &progress_id,
+                        name,
+                        received,
+                        total.or(Some(received)),
+                        "complete",
+                        "Video saved to Phoenix",
+                    );
+                    Ok(asset)
+                }
+                Err(error) => {
+                    let _ = fs::remove_file(&staging_path);
+                    self.update_download(
+                        &progress_id,
+                        name,
+                        received,
+                        total.or(Some(received)),
+                        "error",
+                        &error,
+                    );
+                    Err(error)
+                }
+            }
         } else {
-            capture.name.trim()
-        };
-        match self.ingest_bytes(
-            &bytes,
-            name,
-            &capture.url,
-            &capture.website,
-            &capture.annotation,
-            &capture.tags,
-            None,
-            None,
-        )? {
-            IngestOutcome::Imported(asset) | IngestOutcome::Duplicate(asset) => Ok(asset),
+            if response.content_length().unwrap_or(0) > 50 * 1024 * 1024 {
+                return Err("Image capture exceeds the 50 MB limit".to_owned());
+            }
+            let bytes = response.bytes().await.map_err(to_string)?.to_vec();
+            if bytes.len() > 50 * 1024 * 1024 {
+                return Err("Image capture exceeds the 50 MB limit".to_owned());
+            }
+            match self.ingest_bytes(
+                &bytes,
+                name,
+                &capture.url,
+                &capture.website,
+                &capture.annotation,
+                &capture.tags,
+                None,
+                None,
+            )? {
+                IngestOutcome::Imported(asset) | IngestOutcome::Duplicate(asset) => Ok(asset),
+            }
         }
     }
 
@@ -1297,12 +1534,61 @@ impl Library {
         bytes: &[u8],
         name: &str,
         extension: &str,
+        source_url: &str,
+        website: &str,
+        annotation: &str,
+        tags: &[String],
         source_created_at: Option<i64>,
         source_modified_at: Option<i64>,
     ) -> Result<IngestOutcome, String> {
         validate_video_bytes(extension, bytes)?;
-        let hash = format!("{:x}", Sha256::digest(bytes));
+        let staging_path = self.root.join(".staging").join(Uuid::new_v4().to_string());
+        fs::write(&staging_path, bytes).map_err(to_string)?;
+        self.ingest_video_staging(
+            &staging_path,
+            name,
+            extension,
+            source_url,
+            website,
+            annotation,
+            tags,
+            source_created_at,
+            source_modified_at,
+        )
+    }
+
+    fn ingest_video_staging(
+        &self,
+        staging_path: &Path,
+        name: &str,
+        extension: &str,
+        source_url: &str,
+        website: &str,
+        annotation: &str,
+        tags: &[String],
+        source_created_at: Option<i64>,
+        source_modified_at: Option<i64>,
+    ) -> Result<IngestOutcome, String> {
+        let mut source = fs::File::open(staging_path).map_err(to_string)?;
+        let mut header = [0_u8; 16];
+        let header_length = source.read(&mut header).map_err(to_string)?;
+        validate_video_bytes(extension, &header[..header_length])?;
+        source.seek(SeekFrom::Start(0)).map_err(to_string)?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0_u8; 128 * 1024];
+        let mut size = 0_u64;
+        loop {
+            let read = source.read(&mut buffer).map_err(to_string)?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+            size = size.saturating_add(read as u64);
+        }
+        drop(source);
+        let hash = format!("{:x}", hasher.finalize());
         if let Some(asset) = self.asset_by_hash(&hash)? {
+            let _ = fs::remove_file(staging_path);
             return Ok(IngestOutcome::Duplicate(asset));
         }
 
@@ -1310,8 +1596,6 @@ impl Library {
         let object_dir = self.root.join("objects").join(prefix);
         fs::create_dir_all(&object_dir).map_err(to_string)?;
         let object_path = object_dir.join(format!("{hash}.{extension}"));
-        let staging_path = self.root.join(".staging").join(Uuid::new_v4().to_string());
-        fs::write(&staging_path, bytes).map_err(to_string)?;
         fs::rename(&staging_path, &object_path).map_err(to_string)?;
 
         let id = Uuid::new_v4().to_string();
@@ -1326,14 +1610,17 @@ impl Library {
                     id, sha256, name, extension, mime_type, size, width, height,
                     source_url, website, annotation, original_path, thumbnail_path,
                     created_at, modified_at, imported_at, comfyui_json
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, '', '', '', ?7, ?8, ?9, ?10, ?11, '')",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, '')",
                 params![
                     id,
                     hash,
                     sanitize_text(name, 500),
                     extension,
                     mime_for_video_extension(extension),
-                    bytes.len() as i64,
+                    i64::try_from(size).unwrap_or(i64::MAX),
+                    sanitize_text(source_url, 4096),
+                    sanitize_text(website, 4096),
+                    sanitize_text(annotation, 10_000),
                     object_path.to_string_lossy(),
                     object_path.to_string_lossy(),
                     created_at,
@@ -1342,6 +1629,7 @@ impl Library {
                 ],
             )
             .map_err(to_string)?;
+        replace_tags(&transaction, &id, tags)?;
         refresh_fts(&transaction, &id)?;
         transaction
             .execute(
@@ -1768,6 +2056,38 @@ fn is_video_extension(extension: &str) -> bool {
         extension.to_ascii_lowercase().as_str(),
         "mp4" | "m4v" | "mov" | "webm" | "mkv" | "ogv" | "avi"
     )
+}
+
+fn capture_video_extension(capture: &CaptureRequest, content_type: &str) -> Option<String> {
+    let declared = capture
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    if is_video_extension(&declared) {
+        return Some(declared);
+    }
+    let from_url = reqwest::Url::parse(&capture.url)
+        .ok()
+        .and_then(|url| {
+            Path::new(url.path())
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(str::to_ascii_lowercase)
+        })
+        .filter(|extension| is_video_extension(extension));
+    if from_url.is_some() {
+        return from_url;
+    }
+    match content_type {
+        "video/mp4" => Some("mp4".to_owned()),
+        "video/quicktime" => Some("mov".to_owned()),
+        "video/webm" => Some("webm".to_owned()),
+        "video/x-matroska" => Some("mkv".to_owned()),
+        "video/ogg" => Some("ogv".to_owned()),
+        "video/x-msvideo" | "video/avi" => Some("avi".to_owned()),
+        _ => None,
+    }
 }
 
 fn mime_for_video_extension(extension: &str) -> &'static str {
@@ -2270,6 +2590,43 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_browser_video_formats_and_tracks_progress() {
+        let temporary =
+            std::env::temp_dir().join(format!("phoenix-progress-test-{}", Uuid::new_v4()));
+        let library = Library::open(temporary.clone(), None).unwrap();
+        let capture = CaptureRequest {
+            token: library.token().to_owned(),
+            url: "https://example.com/watch?id=7".to_owned(),
+            data_base64: String::new(),
+            name: "Example clip".to_owned(),
+            website: "https://example.com".to_owned(),
+            annotation: String::new(),
+            tags: Vec::new(),
+            media_type: "video".to_owned(),
+            extension: String::new(),
+        };
+        assert_eq!(
+            capture_video_extension(&capture, "video/webm").as_deref(),
+            Some("webm")
+        );
+        library.update_download(
+            "download-test",
+            "Example clip",
+            512,
+            Some(1024),
+            "downloading",
+            "Downloading video…",
+        );
+        let progress = library.download_progress();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(
+            (progress[0].received_bytes, progress[0].total_bytes),
+            (512, Some(1024))
+        );
+        fs::remove_dir_all(temporary).unwrap();
+    }
+
+    #[test]
     fn applies_exif_orientation_before_layout_and_thumbnailing() {
         let bytes = jpeg_with_exif(2, 3, 6, "2017:07:07 12:34:56");
         let decoded = decode_oriented(&bytes, ImageFormat::Jpeg).unwrap();
@@ -2475,6 +2832,8 @@ mod tests {
                 website: "https://example.com".to_owned(),
                 annotation: String::new(),
                 tags: Vec::new(),
+                media_type: String::new(),
+                extension: String::new(),
             }))
             .unwrap();
         assert_eq!(captured.id, updated.id);
@@ -2486,6 +2845,8 @@ mod tests {
             website: String::new(),
             annotation: String::new(),
             tags: Vec::new(),
+            media_type: String::new(),
+            extension: String::new(),
         }));
         assert_eq!(unauthorized.unwrap_err(), "Invalid pairing token");
 

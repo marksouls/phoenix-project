@@ -88,6 +88,22 @@ pub struct CaptureRequest {
     pub annotation: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub media_type: String,
+    #[serde(default)]
+    pub extension: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub id: String,
+    pub name: String,
+    pub received_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub state: String,
+    pub message: String,
+    pub finished_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]

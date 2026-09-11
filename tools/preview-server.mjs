@@ -138,6 +138,7 @@ async function handler(request, response) {
       folders: publicFolders(),
     });
   }
+  if (url.pathname === "/dev/download-progress") return json(response, 200, []);
   if (url.pathname === "/dev/search") {
     const query = url.searchParams.get("q")?.toLocaleLowerCase() || "";
     const wide = url.searchParams.get("wide") === "1";
