@@ -44,6 +44,7 @@ Phoenix currently targets modern Ubuntu desktops using GNOME and Wayland.
 ## Firefox extension
 
 The optional extension sends images from Firefox directly to Phoenix. Open Phoenix's Firefox connection section, then follow the pairing instructions shown in the app.
+This is yet to be released in the official Mozilla add-ons store and is unsigned right now
 
 ## Future roadmap
 
