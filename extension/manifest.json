@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Phoenix Project Capture",
+  "version": "0.1.0",
+  "description": "Drag images from Firefox into your local Phoenix Project library.",
+  "icons": {
+    "32": "icons/phoenix.svg",
+    "48": "icons/phoenix.svg",
+    "96": "icons/phoenix.svg"
+  },
+  "permissions": [
+    "menus",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:41673/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_icon": "icons/phoenix.svg",
+    "default_title": "Phoenix Project",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "capture@phoenix-project.local",
+      "data_collection_permissions": {
+        "required": ["websiteActivity", "websiteContent"]
+      },
+      "strict_min_version": "142.0"
+    }
+  }
+}

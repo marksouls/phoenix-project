@@ -1,0 +1,47 @@
+[package]
+name = "phoenix-project"
+version = "0.1.32"
+description = "Linux-native visual asset library"
+authors = ["Phoenix Project"]
+edition = "2024"
+default-run = "phoenix-project"
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-plugin-drag-and-drop-wayland"]
+
+[lib]
+name = "phoenix_project_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "phoenix-project"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "phoenix-import"
+path = "src/bin/phoenix-import.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+mime_guess = "2"
+png = "0.18"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-drag-and-drop-wayland = { path = "vendor/tauri-plugin-drag-and-drop-wayland", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+walkdir = "2"

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phoenix Project</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/phoenix.svg" alt="">
+    <div><strong>Phoenix Project</strong><span>Firefox capture</span></div>
+    <i id="connection-light" aria-hidden="true"></i>
+  </header>
+  <main>
+    <p id="connection-copy">Checking the desktop app…</p>
+    <label for="token">Pairing token</label>
+    <div class="token-row">
+      <input id="token" type="password" spellcheck="false" autocomplete="off" placeholder="Paste token from Phoenix">
+      <button id="reveal" class="icon" type="button" title="Show token">○</button>
+    </div>
+    <button id="save" class="primary" type="button">Save and connect</button>
+    <p class="hint">Open Phoenix → Connect Firefox to copy your token. Then drag an image to the Phoenix dock at the bottom of any webpage.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

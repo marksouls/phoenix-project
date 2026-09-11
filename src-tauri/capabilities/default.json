@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the Phoenix main window",
+  "windows": ["main", "asset-*"],
+  "permissions": ["core:default", "drag-and-drop-wayland:default"]
+}

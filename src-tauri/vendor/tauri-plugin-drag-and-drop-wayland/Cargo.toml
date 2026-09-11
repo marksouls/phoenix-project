@@ -1,0 +1,32 @@
+[package]
+name = "tauri-plugin-drag-and-drop-wayland"
+version = "2.1.0"
+authors = ["Joaquin (Pato) Decima <jdecima@vasak.net.ar>", "Vasak Group"]
+description = "A Tauri plugin for drag-and-drop on Wayland using GTK."
+edition = "2021"
+rust-version = "1.77.2"
+exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
+links = "tauri-plugin-drag-and-drop-wayland"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Vasak-OS/tauri-plugin-drag-and-drop-wayland"
+readme = "README.md"
+keywords = ["tauri", "plugin", "drag", "drop", "wayland"]
+
+[features]
+default = []
+
+[dependencies]
+tauri = { version = "2", features = ["image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = { version = "0.1", features = ["log"] }
+log = "0.4"
+base64 = "0.22"
+gtk = "0.18"
+gdk-pixbuf = "0.18"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]

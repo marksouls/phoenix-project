@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Phoenix File Viewer</title>
+    <link rel="stylesheet" href="viewer-window.css" />
+  </head>
+  <body>
+    <main class="window-viewer">
+      <header>
+        <div><strong id="name">Opening item…</strong><span id="meta"></span></div>
+        <div class="controls">
+          <button id="zoom-out" aria-label="Zoom out">−</button>
+          <output id="zoom">100%</output>
+          <button id="zoom-in" aria-label="Zoom in">＋</button>
+          <button id="fit">Fit</button>
+        </div>
+      </header>
+      <div class="stage" id="stage"><img id="image" alt="" draggable="false" /><video id="video" controls playsinline preload="metadata" hidden></video></div>
+      <footer id="help">Double-click the image to toggle 100% / 200% · + and − zoom · Ctrl+0 fits</footer>
+    </main>
+    <script src="viewer-window.js" type="module"></script>
+  </body>
+</html>

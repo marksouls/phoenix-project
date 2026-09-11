@@ -1,0 +1,12 @@
+/target/
+/src-tauri/target/
+/src-tauri/gen/
+/dist/
+*.phoenixlib/
+*.xpi
+.web-ext-artifacts/
+.DS_Store
+
+# Local development material that is not part of the public project.
+/huttekuttevreugde juli 2017/
+/EAGLE_LINUX_RESEARCH_PLAN.md

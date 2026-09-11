@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Phoenix Project</title>
+    <link rel="icon" type="image/png" href="phoenix-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="startup-screen" id="startup-screen" hidden role="status" aria-live="polite" aria-label="Phoenix is starting">
+      <div class="startup-card">
+        <div class="startup-mark" aria-hidden="true"><img src="phoenix-icon.png" alt="" /></div>
+        <strong>Preparing Phoenix</strong>
+        <span id="startup-message">Starting the local library…</span>
+        <div class="startup-progress" aria-hidden="true"><i id="startup-progress-bar"></i></div>
+        <output id="startup-progress-label">0%</output>
+        <button class="secondary-button" id="startup-retry" type="button" hidden>Try again</button>
+      </div>
+    </div>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Library navigation">
+        <div class="brand-row">
+          <button class="phoenix-mark" id="open-settings" type="button" title="Open Phoenix settings" aria-label="Open Phoenix settings">
+            <img src="phoenix-icon.png" alt="" />
+          </button>
+          <div>
+            <strong>Phoenix</strong>
+            <span>Local Library</span>
+          </div>
+          <button class="icon-button sidebar-toggle" id="sidebar-toggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">‹</button>
+        </div>
+
+        <nav class="nav-section primary-nav">
+          <button class="nav-item active" data-collection="all">
+            <span class="nav-icon">▦</span><span>All items</span><b id="all-count">0</b>
+          </button>
+          <button class="nav-item" data-collection="unfiled">
+            <span class="nav-icon">▱</span><span>Not in folders</span><b id="unfiled-count">0</b>
+          </button>
+          <button class="nav-item" data-collection="untagged">
+            <span class="nav-icon">◇</span><span>Untagged</span><b id="untagged-count">0</b>
+          </button>
+          <button class="nav-item" data-collection="recent">
+            <span class="nav-icon">◷</span><span>Recently added</span>
+          </button>
+          <button class="nav-item" data-collection="trash">
+            <span class="nav-icon">⌫</span><span>Trash</span><b id="trash-count">0</b>
+          </button>
+        </nav>
+
+        <div class="section-heading"><span>Folders</span><button id="new-folder" title="New folder" aria-label="New folder">+</button></div>
+        <nav class="nav-section folder-list" id="folder-list"></nav>
+
+        <div class="sidebar-spacer"></div>
+        <div class="storage-card">
+          <div><span>Local storage</span><strong id="storage-size">0 B</strong></div>
+          <div class="storage-track"><i id="storage-meter"></i></div>
+          <small id="library-location">Opening library…</small>
+        </div>
+        <button class="sidebar-action" id="show-pairing"><span>⌁</span> Firefox connection</button>
+      </aside>
+
+      <main class="workspace">
+        <header class="toolbar">
+          <div class="history-controls">
+            <button class="icon-button" id="history-back" type="button" disabled aria-label="Back">‹</button>
+            <button class="icon-button" id="history-forward" type="button" disabled aria-label="Forward">›</button>
+          </div>
+          <div class="view-title">
+            <h1 id="collection-title">All items</h1>
+            <span id="result-count">0 items</span>
+          </div>
+          <div class="toolbar-spacer"></div>
+          <button class="toolbar-button danger-toolbar" id="empty-trash" type="button" hidden><span>⌫</span> Empty Trash</button>
+          <div class="size-control" role="group" aria-label="Thumbnail size">
+            <button type="button" id="tile-smaller" title="Smaller thumbnails" aria-label="Smaller thumbnails">−</button>
+            <output id="tile-size-label" aria-live="polite">Medium</output>
+            <button type="button" id="tile-larger" title="Larger thumbnails" aria-label="Larger thumbnails">＋</button>
+          </div>
+          <button class="toolbar-button selection-action" id="export-button" hidden><span>⇩</span> Export</button>
+          <label class="sort-control" title="Sort items">
+            <span aria-hidden="true">⇅</span>
+            <select id="sort-select" aria-label="Sort items">
+              <option value="newest">Date: newest first</option>
+              <option value="oldest">Date: oldest first</option>
+              <option value="name-asc">Name: A to Z</option>
+              <option value="name-desc">Name: Z to A</option>
+              <option value="size-desc">Size: largest first</option>
+              <option value="size-asc">Size: smallest first</option>
+            </select>
+          </label>
+          <button class="toolbar-button" id="view-mode" type="button" title="Switch to list view"><span>◫</span> Grid</button>
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+            <input id="search-input" type="search" placeholder="Search filenames" autocomplete="off" aria-label="Search filenames" />
+            <button type="button" id="search-scope" aria-pressed="false" title="Search filenames only">Name</button>
+            <kbd>/</kbd>
+          </div>
+        </header>
+
+        <section class="content-area">
+          <div class="gallery-wrap" id="gallery-wrap">
+            <div class="welcome-panel" id="welcome-panel" hidden>
+              <div class="welcome-art" aria-hidden="true">
+                <svg viewBox="0 0 180 150"><path class="sun" d="M37 91c0-34 22-65 56-65 38 0 60 33 56 69"/><path class="wing left" d="M91 78C67 47 33 54 15 73c26-4 35 11 48 31 8 12 20 18 31 19"/><path class="wing right" d="M91 78c24-31 58-24 76-5-26-4-35 11-48 31-8 12-20 18-31 19"/><path class="body" d="M90 49c17 19 24 42 11 72l-11 20-11-20c-13-30-6-53 11-72Z"/><circle cx="84" cy="67" r="2"/></svg>
+              </div>
+              <h2>Build your visual library</h2>
+              <p>Drop images, videos, text files, or a folder here, or use the Firefox extension. Phoenix copies supported files into its own local library and leaves the source untouched.</p>
+            </div>
+            <div class="gallery" id="gallery" aria-live="polite"></div>
+            <div class="drop-overlay" id="drop-overlay">
+              <div><span>＋</span><strong>Import into Phoenix</strong><small>Drop files or a folder</small></div>
+            </div>
+          </div>
+
+          <section class="settings-page" id="settings-page" hidden aria-labelledby="settings-title">
+            <div class="settings-shell">
+              <header class="settings-heading">
+                <div class="settings-mark" aria-hidden="true"><img src="phoenix-icon.png" alt="" /></div>
+                <div><h2 id="settings-title">Settings</h2><p>Customize how Phoenix previews and navigates your library.</p></div>
+              </header>
+
+              <section class="settings-group" aria-labelledby="appearance-settings-title">
+                <div class="settings-group-heading"><strong id="appearance-settings-title">Appearance</strong><span>Choose how Phoenix looks.</span></div>
+                <label class="settings-row" for="setting-theme">
+                  <span><strong>Theme</strong><small>More Phoenix themes can be added here later.</small></span>
+                  <select id="setting-theme">
+                    <optgroup label="Static">
+                      <option value="system">Follow system</option>
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                    </optgroup>
+                    <optgroup label="Animated">
+                      <option value="cyberpunk-synapse">Cyberpunk Synapse</option>
+                      <option value="retrowave-embers" selected>Retrowave Embers</option>
+                      <option value="midnight-rain">Midnight Rain</option>
+                      <option value="ocean-constellations">Ocean Constellations</option>
+                      <option value="terminal-flow">Terminal Flow</option>
+                      <option value="ume-petals">Ume Petals</option>
+                      <option value="cute-sparkles">Cute Sparkles</option>
+                    </optgroup>
+                  </select>
+                </label>
+              </section>
+
+              <section class="settings-group" aria-labelledby="sidebar-settings-title">
+                <div class="settings-group-heading"><strong id="sidebar-settings-title">Sidebar sections</strong><span>Choose which automatic library sections appear in the sidebar.</span></div>
+                <label class="settings-row" for="setting-show-unfiled">
+                  <span><strong>Not in folders</strong><small>Show items that have not been assigned to any folder.</small></span>
+                  <input class="settings-switch" id="setting-show-unfiled" type="checkbox" />
+                </label>
+                <label class="settings-row" for="setting-show-untagged">
+                  <span><strong>Untagged</strong><small>Show the automatic section containing items without tags.</small></span>
+                  <input class="settings-switch" id="setting-show-untagged" type="checkbox" />
+                </label>
+                <label class="settings-row" for="setting-show-recent">
+                  <span><strong>Recently added</strong><small>Show the shortcut to recently imported items.</small></span>
+                  <input class="settings-switch" id="setting-show-recent" type="checkbox" />
+                </label>
+              </section>
+
+              <section class="settings-group" aria-labelledby="preview-settings-title">
+                <div class="settings-group-heading"><strong id="preview-settings-title">Hover previews</strong><span>Control animation while browsing the library.</span></div>
+                <label class="settings-row" for="setting-gif-hover">
+                  <span><strong>Play GIFs on hover</strong><small>Show the animated GIF while the pointer is over its thumbnail.</small></span>
+                  <input class="settings-switch" id="setting-gif-hover" type="checkbox" />
+                </label>
+                <label class="settings-row" for="setting-video-hover">
+                  <span><strong>Preview videos on hover</strong><small>Play a muted preview while the pointer is over a video.</small></span>
+                  <input class="settings-switch" id="setting-video-hover" type="checkbox" />
+                </label>
+              </section>
+
+              <section class="settings-group" aria-labelledby="viewer-settings-title">
+                <div class="settings-group-heading"><strong id="viewer-settings-title">Viewer</strong><span>Control playback and item navigation.</span></div>
+                <label class="settings-row" for="setting-video-autoplay">
+                  <span><strong>Autoplay video when opened</strong><small>Start a video immediately when it opens in the viewer.</small></span>
+                  <input class="settings-switch" id="setting-video-autoplay" type="checkbox" />
+                </label>
+                <label class="settings-row" for="setting-video-loop-short">
+                  <span><strong>Loop short video clips</strong><small>Automatically loop videos shorter than 30 seconds.</small></span>
+                  <input class="settings-switch" id="setting-video-loop-short" type="checkbox" />
+                </label>
+                <div class="settings-row">
+                  <span><strong>Mouse back and forward buttons</strong><small>Reverse which side button opens the previous or next item.</small></span>
+                  <button class="direction-button" id="setting-mouse-direction" type="button" aria-pressed="false"><span>Normal</span><b>Back ← · → Forward</b></button>
+                </div>
+                <div class="settings-row">
+                  <span><strong>Left and right arrow keys</strong><small>Reverse which arrow opens the previous or next item.</small></span>
+                  <button class="direction-button" id="setting-arrow-direction" type="button" aria-pressed="false"><span>Normal</span><b>← Previous · Next →</b></button>
+                </div>
+              </section>
+
+              <p class="settings-footnote"><span>✓</span> Settings are saved automatically on this computer.</p>
+            </div>
+          </section>
+
+          <section class="image-viewer" id="image-viewer" hidden aria-label="File viewer">
+            <div class="viewer-shell">
+              <header class="viewer-header">
+                <div><strong id="viewer-name">File viewer</strong><span id="viewer-meta"></span></div>
+                <output class="viewer-position" id="viewer-position" aria-live="polite">1 / 1</output>
+                <div class="viewer-actions">
+                  <button type="button" id="viewer-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+                  <output id="viewer-zoom">Fit</output>
+                  <button type="button" id="viewer-zoom-in" title="Zoom in" aria-label="Zoom in">＋</button>
+                  <button type="button" id="viewer-fit" title="Fit image">Fit</button>
+                  <button type="button" id="viewer-crop" title="Crop image">Crop</button>
+                  <button type="button" id="viewer-save-text" title="Save text file" hidden>Save</button>
+                  <button type="button" id="viewer-split" title="Show matching image above the text editor" aria-pressed="false" hidden>⇳ Split</button>
+                  <button type="button" id="viewer-trash" class="viewer-danger" title="Move item to Trash" aria-label="Move item to Trash">⌫</button>
+                  <button type="button" id="viewer-close" class="viewer-close" title="Back to library" aria-label="Back to library">×</button>
+                </div>
+              </header>
+              <div class="viewer-stage" id="viewer-stage">
+                <button type="button" class="viewer-nav previous" id="viewer-previous" aria-label="Previous item">‹</button>
+                <div class="viewer-media-pane" id="viewer-media-pane"><img id="viewer-image" alt="" draggable="false" /><video id="viewer-video" controls playsinline preload="metadata" hidden></video></div>
+                <textarea id="viewer-text-editor" class="viewer-text-editor" aria-label="Text file contents" spellcheck="true" hidden></textarea>
+                <button type="button" class="viewer-nav next" id="viewer-next" aria-label="Next item">›</button>
+              </div>
+              <footer class="viewer-footer"><span id="viewer-footer-help">Scroll to zoom · drag a zoomed image to pan</span><span>← → navigate · Esc returns to the library</span></footer>
+            </div>
+          </section>
+
+          <button class="icon-button inspector-toggle" id="inspector-toggle" type="button" title="Collapse inspector" aria-label="Collapse inspector" aria-expanded="true">›</button>
+          <aside class="inspector" id="inspector" aria-label="Asset inspector">
+            <div class="inspector-empty" id="inspector-empty">
+              <div>◇</div>
+              <p id="inspector-empty-message">Select an item to inspect it</p>
+            </div>
+            <div class="inspector-content" id="inspector-content" hidden>
+              <div class="preview-frame"><img id="inspector-image" alt="" /><video id="inspector-video" controls playsinline preload="metadata" hidden></video><div class="inspector-text-icon" id="inspector-text-icon" hidden><strong>TXT</strong><span>Editable text file</span></div></div>
+              <div class="rating-row" id="rating-row" aria-label="Rating"></div>
+              <section class="inspector-section">
+                <label for="asset-name">Name</label>
+                <input id="asset-name" class="field" maxlength="500" />
+              </section>
+              <section class="inspector-section">
+                <label for="asset-notes">Notes</label>
+                <textarea id="asset-notes" class="field" rows="3" placeholder="Add a note…"></textarea>
+              </section>
+              <section class="inspector-section">
+                <label>Tags</label>
+                <div class="tag-editor" id="tag-editor"></div>
+                <div class="tag-composer">
+                  <div class="tag-input-row">
+                    <input id="tag-input" class="field" placeholder="Add a tag" autocomplete="off" />
+                    <button type="button" id="tag-add" title="Add tag" aria-label="Add tag">＋</button>
+                  </div>
+                  <button type="button" class="tag-create" id="tag-create" hidden>Create “<strong id="tag-create-label"></strong>”</button>
+                </div>
+              </section>
+              <section class="inspector-section properties">
+                <div><span>Format</span><strong id="asset-format"></strong></div>
+                <div><span>Extension</span><strong id="asset-extension"></strong></div>
+                <div><span>Dimensions</span><strong id="asset-dimensions"></strong></div>
+                <div><span>Size</span><strong id="asset-size"></strong></div>
+                <div><span>Imported</span><strong id="asset-imported"></strong></div>
+                <div><span>Created</span><strong id="asset-created"></strong></div>
+                <div><span>Modified</span><strong id="asset-modified"></strong></div>
+                <div><span>Source</span><a id="asset-source" target="_blank" rel="noreferrer">—</a></div>
+              </section>
+              <section class="inspector-section comfyui-section" id="comfyui-section" hidden>
+                <div class="comfyui-heading"><strong>ComfyUI generation data</strong><span>Embedded in this PNG</span></div>
+                <div id="comfyui-data"></div>
+              </section>
+              <div class="autosave-status" id="autosave-status" role="status" aria-live="polite"><span>✓</span> Changes save automatically</div>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="quick-preview" id="quick-preview" hidden aria-hidden="true">
+      <img id="quick-preview-image" alt="" draggable="false" />
+      <span id="quick-preview-name"></span>
+    </div>
+
+    <div class="selection-marquee" id="selection-marquee" hidden aria-hidden="true"></div>
+
+    <div class="context-menu" id="asset-context-menu" hidden role="menu">
+      <button type="button" data-action="view" role="menuitem">Open in viewer <kbd>Enter</kbd></button>
+      <button type="button" data-action="new-window" role="menuitem">Open in new window</button>
+      <button type="button" data-action="rename" role="menuitem">Rename <kbd>F2</kbd></button>
+      <button type="button" data-action="crop" role="menuitem">Crop image…</button>
+      <button type="button" data-action="folder" role="menuitem">Add to folder…</button>
+      <button type="button" data-action="remove-folder" role="menuitem" hidden>Remove from this folder</button>
+      <button type="button" data-action="export" role="menuitem">Export selected…</button>
+      <hr />
+      <button type="button" class="danger" data-action="trash" role="menuitem">Move to Trash <kbd>Delete</kbd></button>
+      <button type="button" data-action="restore" role="menuitem" hidden>Restore from Trash</button>
+      <button type="button" class="danger" data-action="delete-permanently" role="menuitem" hidden>Delete permanently… <kbd>Delete</kbd></button>
+    </div>
+
+    <div class="context-menu" id="folder-context-menu" hidden role="menu">
+      <button type="button" data-folder-action="export" role="menuitem">Export all items…</button>
+      <hr />
+      <span class="context-label">Folder color</span>
+      <div class="folder-color-palette" role="group" aria-label="Folder color">
+        <button type="button" data-folder-color="#efb84c" style="--swatch:#efb84c" aria-label="Yellow"></button>
+        <button type="button" data-folder-color="#5d94ee" style="--swatch:#5d94ee" aria-label="Blue"></button>
+        <button type="button" data-folder-color="#e66b63" style="--swatch:#e66b63" aria-label="Red"></button>
+        <button type="button" data-folder-color="#8b72db" style="--swatch:#8b72db" aria-label="Purple"></button>
+        <button type="button" data-folder-color="#45a989" style="--swatch:#45a989" aria-label="Green"></button>
+        <button type="button" data-folder-color="#d875b0" style="--swatch:#d875b0" aria-label="Pink"></button>
+        <button type="button" data-folder-color="#df8c42" style="--swatch:#df8c42" aria-label="Orange"></button>
+        <button type="button" data-folder-color="#62a9bd" style="--swatch:#62a9bd" aria-label="Teal"></button>
+      </div>
+      <button type="button" class="danger" data-folder-action="delete" role="menuitem">Delete folder</button>
+    </div>
+
+    <div class="context-menu" id="trash-context-menu" hidden role="menu">
+      <button type="button" class="danger" data-trash-action="empty" role="menuitem">Empty Trash…</button>
+    </div>
+
+    <div class="context-menu" id="gallery-context-menu" hidden role="menu">
+      <button type="button" data-gallery-action="new-text" role="menuitem">New text file…</button>
+    </div>
+
+    <dialog id="rename-dialog">
+      <form method="dialog" class="dialog-card" id="rename-form">
+        <div class="dialog-heading"><div><strong>Rename item</strong><span>Images can be converted between JPG, PNG, WebP, or GIF; videos keep their original format</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <label for="rename-input">Name</label>
+        <input id="rename-input" class="field" maxlength="500" autocomplete="off" />
+        <button class="primary-button" value="default">Rename</button>
+      </form>
+    </dialog>
+
+    <dialog id="text-file-dialog">
+      <form method="dialog" class="dialog-card" id="text-file-form">
+        <div class="dialog-heading"><div><strong>New text file</strong><span>Create an editable .txt item in this library</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <label for="text-file-name">Name</label>
+        <input id="text-file-name" class="field" value="Untitled.txt" maxlength="500" autocomplete="off" />
+        <label for="text-file-content">Contents</label>
+        <textarea id="text-file-content" class="field" rows="10" placeholder="Start typing…"></textarea>
+        <button class="primary-button" value="default">Create text file</button>
+      </form>
+    </dialog>
+
+    <dialog id="crop-dialog" class="crop-dialog">
+      <form method="dialog" class="dialog-card crop-card" id="crop-form">
+        <div class="dialog-heading"><div><strong>Crop image</strong><span>Drag the blue area and its corner handles</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <div class="crop-workspace" id="crop-workspace">
+          <img id="crop-image" alt="" draggable="false" />
+          <div class="crop-selection" id="crop-selection">
+            <i data-crop-handle="nw"></i><i data-crop-handle="ne"></i>
+            <i data-crop-handle="sw"></i><i data-crop-handle="se"></i>
+          </div>
+        </div>
+        <div class="crop-toolbar"><strong id="crop-size">—</strong><button type="button" class="secondary-button" id="crop-reset">Reset to full image</button></div>
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-dialog>Cancel</button>
+          <button class="primary-button" value="default">Apply crop</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="folder-dialog">
+      <form method="dialog" class="dialog-card" id="folder-form">
+        <div class="dialog-heading"><div><strong>Add to folder</strong><span id="folder-selection-count">1 image selected</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <label for="folder-select">Folder</label>
+        <select id="folder-select" class="field"></select>
+        <button class="primary-button" value="default">Add selected images</button>
+        <button type="button" class="secondary-button" id="create-folder-from-assign">Create a new folder</button>
+      </form>
+    </dialog>
+
+    <dialog id="new-folder-dialog">
+      <form method="dialog" class="dialog-card" id="new-folder-form">
+        <div class="dialog-heading"><div><strong>New folder</strong><span>Create an empty Phoenix collection</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <label for="new-folder-name">Folder name</label>
+        <input id="new-folder-name" class="field" maxlength="200" autocomplete="off" placeholder="Inspiration" />
+        <button class="primary-button" value="default">Create folder</button>
+      </form>
+    </dialog>
+
+    <dialog id="delete-folder-dialog">
+      <form method="dialog" class="dialog-card" id="delete-folder-form">
+        <div class="dialog-heading"><div><strong>Delete folder?</strong><span id="delete-folder-name"></span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <p id="delete-folder-warning"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-dialog>Cancel</button>
+          <button class="primary-button danger-button" value="default">Delete folder</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="permanent-delete-dialog">
+      <form method="dialog" class="dialog-card" id="permanent-delete-form">
+        <div class="dialog-heading"><div><strong id="permanent-delete-title">Delete permanently?</strong><span>This cannot be undone</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <p id="permanent-delete-warning"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-dialog>Cancel</button>
+          <button class="primary-button danger-button" value="default">Delete permanently</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="pairing-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading"><div><strong>Firefox connection</strong><span>Pair the Phoenix extension</span></div><button type="button" data-close-dialog aria-label="Close">×</button></div>
+        <p>Open the Phoenix extension in Firefox and paste this library token. It only authorizes local requests on this computer.</p>
+        <label>Pairing token</label>
+        <div class="token-row"><code id="pairing-token">Loading…</code><button type="button" id="copy-token">Copy</button></div>
+        <div class="connection-status"><i></i><span>Local API</span><strong>127.0.0.1:41673</strong></div>
+      </form>
+    </dialog>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

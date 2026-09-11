@@ -1,0 +1,12 @@
+{
+  "name": "phoenix-project",
+  "version": "0.1.32",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node tools/preview-server.mjs",
+    "check:frontend": "node --check frontend/app.js",
+    "check:extension": "node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js",
+    "test": "node --test tests/*.test.mjs"
+  }
+}
