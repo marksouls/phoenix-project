@@ -320,7 +320,7 @@ function assetCardMarkup(asset) {
   const thumbnail = text
     ? `<div class="text-thumb-icon" aria-hidden="true"><span>TXT</span><i></i><i></i><i></i><i></i></div>`
     : video
-      ? `<video data-id="${asset.id}" muted playsinline preload="metadata" draggable="false"></video><span class="video-play-badge" aria-hidden="true">▶</span>`
+      ? `<video data-id="${asset.id}" muted playsinline preload="auto" draggable="false"></video><span class="video-play-badge" aria-hidden="true">▶</span>`
       : `<img data-id="${asset.id}" alt="${escapeHtml(asset.name)}" draggable="false" />`;
   const details = text ? "Text file"
     : video && !(Number(asset.width) > 0 && Number(asset.height) > 0) ? "Video"
@@ -613,6 +613,32 @@ function wireVideoPlayback() {
   });
 }
 
+function suspendVideoThumbnails() {
+  gallery.querySelectorAll("video[data-id][src]").forEach((video) => {
+    video.pause();
+    try { video.currentTime = 0; } catch { /* The thumbnail may still be loading. */ }
+  });
+}
+
+function restoreVideoThumbnailFrames() {
+  gallery.querySelectorAll("video[data-id][src]").forEach((video) => {
+    const id = video.dataset.id;
+    if (!id) return;
+    video.pause();
+    video.classList.remove("loaded");
+    video.removeAttribute("src");
+    video.load();
+    video.src = thumbnailUrl(id, true);
+    video.addEventListener("loadeddata", () => {
+      if (!video.isConnected) return;
+      video.pause();
+      try { video.currentTime = 0; } catch { /* The first decoded frame is already usable. */ }
+      video.classList.add("loaded");
+    }, { once: true });
+    video.load();
+  });
+}
+
 function setSingleSelection(id) {
   state.selectedIds = new Set(id ? [id] : []);
   state.selectedId = id;
@@ -837,6 +863,7 @@ async function openViewer(id) {
   const video = isVideoAsset(asset);
   const textPair = text ? matchingImageForText(asset) : null;
   viewerTextPairId = textPair?.id || null;
+  suspendVideoThumbnails();
   viewerTextSplit = false;
   $("#viewer-stage").classList.remove("text-split");
   viewerZoom = 1;
@@ -917,6 +944,7 @@ async function openViewer(id) {
 }
 
 function closeViewer() {
+  const wasOpen = !$("#image-viewer").hidden;
   const video = $("#viewer-video");
   video.pause();
   video.removeAttribute("src");
@@ -929,6 +957,7 @@ function closeViewer() {
   $("#gallery-wrap").hidden = false;
   document.querySelector(".workspace").classList.remove("viewer-active");
   resetViewerTransform();
+  if (wasOpen) requestAnimationFrame(restoreVideoThumbnailFrames);
 }
 
 function toggleViewerTextSplit() {
@@ -1056,6 +1085,16 @@ async function openAssetWindow(id = state.selectedId) {
     else window.open(`viewer-window.html?id=${encodeURIComponent(id)}`, "_blank", "popup,width=1100,height=780");
   } catch (error) {
     toast("Could not open viewer window", String(error), true);
+  }
+}
+
+async function openAssetExternally(id = state.selectedId) {
+  if (!id) return;
+  try {
+    if (invoke) await command("open_asset_externally", { id });
+    else window.open(mediaUrl(id, true), "_blank");
+  } catch (error) {
+    toast("Could not open item", String(error), true);
   }
 }
 
@@ -1300,12 +1339,24 @@ let refreshingDownloadProgress = false;
 
 function renderDownloadProgress(downloads) {
   const container = $("#download-progress-stack");
-  container.innerHTML = downloads.map((download) => {
+  const liveIds = new Set(downloads.map((download) => String(download.id)));
+
+  container.querySelectorAll(".download-progress").forEach((element) => {
+    if (liveIds.has(element.dataset.downloadId)) return;
+    element.classList.add("leaving");
+    setTimeout(() => element.remove(), 220);
+  });
+
+  downloads.forEach((download) => {
+    const id = String(download.id);
     const received = Number(download.receivedBytes || 0);
     const total = Number(download.totalBytes || 0);
     const determined = total > 0;
     const percent = determined ? Math.max(0, Math.min(100, received / total * 100)) : 0;
     const terminal = download.state === "complete" || download.state === "error";
+    const progressState = ["downloading", "processing", "complete", "error"].includes(download.state)
+      ? download.state
+      : "downloading";
     const detail = download.state === "processing"
       ? download.message
       : download.state === "complete"
@@ -1315,11 +1366,22 @@ function renderDownloadProgress(downloads) {
           : determined
             ? `${formatBytes(received)} of ${formatBytes(total)} · ${Math.round(percent)}%`
             : `${formatBytes(received)} downloaded`;
-    return `<section class="download-progress ${escapeHtml(download.state)}${!determined && !terminal ? " indeterminate" : ""}" style="--download-percent:${percent}%">
-      <header><strong>${escapeHtml(download.name || "Video download")}</strong><small>${escapeHtml(detail || "Downloading video…")}</small></header>
-      <div class="download-progress-track" aria-hidden="true"><i></i></div>
-    </section>`;
-  }).join("");
+    let element = [...container.children].find((child) => child.dataset.downloadId === id);
+    if (!element) {
+      element = document.createElement("section");
+      element.className = "download-progress entering";
+      element.dataset.downloadId = id;
+      element.innerHTML = "<header><strong></strong><small></small></header><div class=\"download-progress-track\" aria-hidden=\"true\"><i></i></div>";
+      container.append(element);
+      requestAnimationFrame(() => element.classList.remove("entering"));
+    }
+    element.classList.remove("downloading", "processing", "complete", "error", "indeterminate", "leaving");
+    element.classList.add(progressState);
+    if (!determined && !terminal) element.classList.add("indeterminate");
+    element.style.setProperty("--download-percent", `${percent}%`);
+    element.querySelector("strong").textContent = download.name || "Video download";
+    element.querySelector("small").textContent = detail || "Downloading video…";
+  });
 }
 
 async function refreshDownloadProgress() {
@@ -1724,6 +1786,7 @@ function openContextMenu(event, id) {
   const video = isVideoAsset(assetById(id));
   contextMenu.querySelector('[data-action="view"]').hidden = isMultiSelection;
   contextMenu.querySelector('[data-action="new-window"]').hidden = isMultiSelection || text;
+  contextMenu.querySelector('[data-action="external-app"]').hidden = isMultiSelection;
   contextMenu.querySelector('[data-action="rename"]').disabled = state.selectedIds.size !== 1 || state.collection === "trash";
   contextMenu.querySelector('[data-action="crop"]').hidden = text || video;
   contextMenu.querySelector('[data-action="crop"]').disabled = state.selectedIds.size !== 1 || state.collection === "trash" || text || video;
@@ -2268,6 +2331,7 @@ contextMenu.addEventListener("click", (event) => {
   closeContextMenu();
   if (action === "view") openViewer(state.selectedId);
   if (action === "new-window") openAssetWindow(state.selectedId);
+  if (action === "external-app") openAssetExternally(state.selectedId);
   if (action === "rename") openRenameDialog();
   if (action === "crop") openCropDialog(state.selectedId);
   if (action === "folder") openFolderDialog();

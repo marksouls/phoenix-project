@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
@@ -359,25 +360,44 @@ impl Library {
             )
             .optional()
             .map_err(to_string)?;
-        if completed.as_deref() == Some("1") {
+        if completed.as_deref() == Some("2") {
             return Ok(());
         }
+        let video_metadata_available = Command::new("ffprobe")
+            .arg("-version")
+            .output()
+            .is_ok_and(|output| output.status.success());
 
         let records = {
             let mut statement = connection
-                .prepare("SELECT id, original_path FROM assets WHERE extension = 'png'")
+                .prepare(
+                    "SELECT id, original_path, extension FROM assets
+                     WHERE comfyui_json = ''
+                       AND extension IN ('png', 'mp4', 'm4v', 'mov', 'webm', 'mkv', 'ogv', 'avi')",
+                )
                 .map_err(to_string)?;
             let rows = statement
                 .query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
                 })
                 .map_err(to_string)?;
             rows.filter_map(Result::ok).collect::<Vec<_>>()
         };
-        for (id, path) in records {
-            let summary = fs::read(&path)
-                .ok()
-                .and_then(|bytes| extract_comfyui_metadata(&bytes))
+        for (id, path, extension) in records {
+            let metadata = if extension == "png" {
+                fs::read(&path)
+                    .ok()
+                    .and_then(|bytes| extract_comfyui_metadata(&bytes))
+            } else if video_metadata_available {
+                extract_comfyui_video_metadata(Path::new(&path))
+            } else {
+                None
+            };
+            let summary = metadata
                 .and_then(|metadata| serde_json::to_string(&metadata).ok())
                 .unwrap_or_default();
             connection
@@ -389,9 +409,9 @@ impl Library {
         }
         connection
             .execute(
-                "INSERT INTO app_meta (key, value) VALUES ('comfyui_metadata_version', '1')
+                "INSERT INTO app_meta (key, value) VALUES ('comfyui_metadata_version', ?1)
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                [],
+                [if video_metadata_available { "2" } else { "1" }],
             )
             .map_err(to_string)?;
         Ok(())
@@ -1587,9 +1607,23 @@ impl Library {
         }
         drop(source);
         let hash = format!("{:x}", hasher.finalize());
+        let comfyui_json = extract_comfyui_video_metadata(staging_path)
+            .and_then(|metadata| serde_json::to_string(&metadata).ok())
+            .unwrap_or_default();
         if let Some(asset) = self.asset_by_hash(&hash)? {
+            if !comfyui_json.is_empty() && asset.comfyui.is_none() {
+                self.connect()?
+                    .execute(
+                        "UPDATE assets SET comfyui_json = ?1 WHERE id = ?2",
+                        params![comfyui_json, &asset.id],
+                    )
+                    .map_err(to_string)?;
+            }
             let _ = fs::remove_file(staging_path);
-            return Ok(IngestOutcome::Duplicate(asset));
+            return self
+                .asset_by_id(&asset.id)?
+                .map(IngestOutcome::Duplicate)
+                .ok_or_else(|| "Video was not found after refreshing its metadata".to_owned());
         }
 
         let prefix = &hash[0..2];
@@ -1610,7 +1644,7 @@ impl Library {
                     id, sha256, name, extension, mime_type, size, width, height,
                     source_url, website, annotation, original_path, thumbnail_path,
                     created_at, modified_at, imported_at, comfyui_json
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, '')",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     id,
                     hash,
@@ -1626,6 +1660,7 @@ impl Library {
                     created_at,
                     modified_at,
                     now,
+                    comfyui_json,
                 ],
             )
             .map_err(to_string)?;
@@ -2158,9 +2193,41 @@ fn extract_comfyui_metadata(bytes: &[u8]) -> Option<ComfyUiMetadata> {
         }
     }
 
-    let prompt = chunks
-        .get("prompt")
-        .and_then(|text| parse_relaxed_json(text))?;
+    comfyui_metadata_from_strings(
+        chunks.get("prompt")?,
+        chunks.get("workflow").map(String::as_str),
+    )
+}
+
+fn extract_comfyui_video_metadata(path: &Path) -> Option<ComfyUiMetadata> {
+    let output = Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "format_tags", "-of", "json"])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let output: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let tags = output.get("format")?.get("tags")?.as_object()?;
+    let tag_text = |name: &str| {
+        tags.iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| match value {
+                serde_json::Value::String(text) => text.clone(),
+                other => other.to_string(),
+            })
+    };
+    let prompt = tag_text("prompt")?;
+    let workflow = tag_text("workflow");
+    comfyui_metadata_from_strings(&prompt, workflow.as_deref())
+}
+
+fn comfyui_metadata_from_strings(
+    prompt_text: &str,
+    workflow_text: Option<&str>,
+) -> Option<ComfyUiMetadata> {
+    let prompt = parse_relaxed_json_unwrapped(prompt_text)?;
     let nodes = prompt.as_object()?;
     let mut metadata = ComfyUiMetadata {
         node_count: nodes.len(),
@@ -2239,10 +2306,7 @@ fn extract_comfyui_metadata(bytes: &[u8]) -> Option<ComfyUiMetadata> {
     metadata.positive_prompt = positives.join("\n\n");
     metadata.negative_prompt = negatives.join("\n\n");
 
-    if let Some(workflow) = chunks
-        .get("workflow")
-        .and_then(|text| parse_relaxed_json(text))
-    {
+    if let Some(workflow) = workflow_text.and_then(parse_relaxed_json_unwrapped) {
         metadata.workflow_id = workflow
             .get("id")
             .and_then(serde_json::Value::as_str)
@@ -2256,6 +2320,17 @@ fn extract_comfyui_metadata(bytes: &[u8]) -> Option<ComfyUiMetadata> {
             .to_owned();
     }
     Some(metadata)
+}
+
+fn parse_relaxed_json_unwrapped(text: &str) -> Option<serde_json::Value> {
+    let mut value = parse_relaxed_json(text)?;
+    for _ in 0..2 {
+        let serde_json::Value::String(inner) = value else {
+            break;
+        };
+        value = parse_relaxed_json(&inner)?;
+    }
+    Some(value)
 }
 
 fn parse_relaxed_json(text: &str) -> Option<serde_json::Value> {
@@ -2675,6 +2750,80 @@ mod tests {
         assert_eq!(metadata.loras, vec!["detail.safetensors"]);
         assert_eq!(metadata.workflow_id, "workflow-test");
         assert_eq!(metadata.frontend_version, "1.24.0");
+    }
+
+    #[test]
+    fn extracts_comfyui_metadata_from_double_encoded_video_tags() {
+        let prompt = serde_json::to_string(
+            &serde_json::to_string(&serde_json::json!({
+                "1": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": { "text": "cinematic sunrise" },
+                    "_meta": { "title": "Positive Prompt" }
+                },
+                "2": {
+                    "class_type": "KSampler",
+                    "inputs": { "seed": 7, "positive": ["1", 0] }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let workflow = serde_json::to_string(&serde_json::json!({
+            "id": "video-workflow",
+            "extra": { "frontendVersion": "1.25.0" }
+        }))
+        .unwrap();
+
+        let metadata = comfyui_metadata_from_strings(&prompt, Some(&workflow)).unwrap();
+        assert_eq!(metadata.positive_prompt, "cinematic sunrise");
+        assert_eq!(metadata.samplers[0].seed, "7");
+        assert_eq!(metadata.workflow_id, "video-workflow");
+        assert_eq!(metadata.frontend_version, "1.25.0");
+    }
+
+    #[test]
+    fn extracts_comfyui_metadata_from_videohelper_style_mp4_tags() {
+        let temporary =
+            std::env::temp_dir().join(format!("phoenix-comfy-video-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temporary).unwrap();
+        let video_path = temporary.join("workflow.mp4");
+        let prompt = serde_json::json!({
+            "1": {
+                "class_type": "CLIPTextEncode",
+                "inputs": { "text": "video prompt" },
+                "_meta": { "title": "Positive Prompt" }
+            }
+        })
+        .to_string();
+        let workflow = serde_json::json!({"id": "mp4-workflow"}).to_string();
+        let status = Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=black:s=16x16:d=0.1",
+                "-frames:v",
+                "1",
+                "-c:v",
+                "mpeg4",
+                "-metadata",
+            ])
+            .arg(format!("prompt={prompt}"))
+            .arg("-metadata")
+            .arg(format!("workflow={workflow}"))
+            .args(["-movflags", "use_metadata_tags"])
+            .arg(&video_path)
+            .status();
+        if status.is_ok_and(|status| status.success()) {
+            let metadata = extract_comfyui_video_metadata(&video_path).unwrap();
+            assert_eq!(metadata.positive_prompt, "video prompt");
+            assert_eq!(metadata.workflow_id, "mp4-workflow");
+        }
+        fs::remove_dir_all(temporary).unwrap();
     }
 
     #[test]

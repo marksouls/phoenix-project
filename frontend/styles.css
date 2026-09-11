@@ -169,11 +169,13 @@ button { color: inherit; }
 .size-control button:hover:not(:disabled) { background: var(--surface-muted); color: var(--text); }
 .size-control button:disabled { opacity: .3; cursor: default; }
 .size-control output { overflow: hidden; font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.sort-control { display: grid; min-height: 32px; grid-template-columns: 22px minmax(0, 1fr); align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 0 7px; background: var(--surface-strong); color: var(--text-soft); }
-.sort-control:hover, .sort-control:focus-within { color: var(--text); border-color: color-mix(in srgb, var(--line) 55%, var(--text-soft)); }
-.sort-control > span { text-align: center; font-size: 12px; }
-.sort-control select { width: 116px; border: 0; outline: 0; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
-.sort-control select option { background: var(--surface-strong); color: var(--text); }
+.sort-control { position: relative; display: grid; min-height: 32px; grid-template-columns: 25px minmax(0, 1fr); align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; padding: 0 25px 0 6px; background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 94%, #fff), var(--surface-strong)); color: var(--text-soft); box-shadow: inset 0 1px color-mix(in srgb, #fff 5%, transparent); transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.sort-control::after { position: absolute; right: 10px; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ""; pointer-events: none; transform: translateY(-2px) rotate(45deg); }
+.sort-control:hover, .sort-control:focus-within { color: var(--text); border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); background: color-mix(in srgb, var(--surface-strong) 94%, var(--accent-soft)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent), inset 0 1px color-mix(in srgb, #fff 6%, transparent); }
+.sort-control > span { border-right: 1px solid var(--line-soft); color: var(--accent-ink); text-align: center; font-size: 13px; }
+.sort-control select { width: 126px; min-height: 30px; appearance: none; border: 0; outline: 0; padding: 0 5px 0 9px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; font-weight: 650; }
+.sort-control select optgroup { background: var(--surface-strong); color: var(--text-faint); font-size: 10px; font-weight: 750; }
+.sort-control select option { padding: 8px 12px; background: var(--surface-strong); color: var(--text); font-weight: 550; }
 .search-box { display: grid; grid-template-columns: 19px minmax(90px, 170px) auto auto; align-items: center; min-height: 34px; gap: 6px; margin-left: 2px; border: 1px solid var(--line); border-radius: 9px; padding: 0 6px 0 8px; background: var(--surface-strong); }
 .search-box:focus-within { border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .search-box svg { width: 16px; fill: none; stroke: var(--text-soft); stroke-width: 1.8; }
@@ -463,7 +465,8 @@ body.phoenix-dragging .nav-item[data-collection="trash"] { outline-color: color-
 .connection-status strong { color: var(--text); font-family: ui-monospace, monospace; font-size: 9px; }
 .status-stack { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: grid; width: min(390px, calc(100vw - 36px)); gap: 8px; pointer-events: none; }
 .download-progress-stack, .toast-stack { display: grid; gap: 8px; }
-.download-progress { overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 11px; padding: 11px 13px; background: var(--surface-strong); box-shadow: var(--shadow); animation: toast-in .2s ease-out; }
+.download-progress { overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 11px; padding: 11px 13px; background: var(--surface-strong); box-shadow: var(--shadow); opacity: 1; transform: translateY(0); transition: opacity .2s ease, transform .2s ease, border-color .2s ease; }
+.download-progress.entering, .download-progress.leaving { opacity: 0; transform: translateY(8px); }
 .download-progress header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .download-progress strong, .download-progress small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .download-progress strong { font-size: 11px; }
@@ -486,6 +489,8 @@ body.phoenix-dragging .nav-item[data-collection="trash"] { outline-color: color-
   .toolbar-button { width: 32px; padding: 0; justify-content: center; font-size: 0; }
   .toolbar-button span { font-size: 13px; }
   .sort-control { position: relative; width: 32px; grid-template-columns: 1fr; padding: 0; }
+  .sort-control::after { display: none; }
+  .sort-control > span { border-right: 0; }
   .sort-control select { position: absolute; inset: 0; width: 100%; opacity: 0; }
   .quick-preview { inset: 70px 278px 24px 221px; }
   .drop-overlay { inset: 70px 278px 18px 222px; }

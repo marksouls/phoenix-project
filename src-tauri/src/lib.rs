@@ -337,6 +337,33 @@ async fn open_external_url(url: String) -> Result<(), String> {
 
 #[cfg(feature = "desktop")]
 #[tauri::command]
+async fn open_asset_externally(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let path = state
+        .library
+        .media_path(&id, false)?
+        .ok_or_else(|| "Item not found".to_owned())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let status = std::process::Command::new("gio")
+            .arg("open")
+            .arg(&path)
+            .status()
+            .or_else(|_| std::process::Command::new("xdg-open").arg(&path).status())
+            .map_err(|error| format!("Could not launch the system application: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("The system application could not open this item".to_owned())
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
 fn open_asset_window(id: String, app: tauri::AppHandle) -> Result<(), String> {
     let label = format!("asset-{id}");
     if let Some(window) = app.get_webview_window(&label) {
@@ -405,6 +432,7 @@ pub fn run() {
             choose_directory,
             export_assets,
             open_external_url,
+            open_asset_externally,
             open_asset_window
         ])
         .run(tauri::generate_context!())

@@ -83,12 +83,18 @@
           <label class="sort-control" title="Sort items">
             <span aria-hidden="true">⇅</span>
             <select id="sort-select" aria-label="Sort items">
-              <option value="newest">Date: newest first</option>
-              <option value="oldest">Date: oldest first</option>
-              <option value="name-asc">Name: A to Z</option>
-              <option value="name-desc">Name: Z to A</option>
-              <option value="size-desc">Size: largest first</option>
-              <option value="size-asc">Size: smallest first</option>
+              <optgroup label="Date">
+                <option value="newest">Date: newest first</option>
+                <option value="oldest">Date: oldest first</option>
+              </optgroup>
+              <optgroup label="Name">
+                <option value="name-asc">Name: A to Z</option>
+                <option value="name-desc">Name: Z to A</option>
+              </optgroup>
+              <optgroup label="File size">
+                <option value="size-desc">Size: largest first</option>
+                <option value="size-asc">Size: smallest first</option>
+              </optgroup>
             </select>
           </label>
           <button class="toolbar-button" id="view-mode" type="button" title="Switch to list view"><span>◫</span> Grid</button>
@@ -104,7 +110,7 @@
           <div class="gallery-wrap" id="gallery-wrap">
             <div class="welcome-panel" id="welcome-panel" hidden>
               <div class="welcome-art" aria-hidden="true">
-                <svg viewBox="0 0 180 150"><path class="sun" d="M37 91c0-34 22-65 56-65 38 0 60 33 56 69"/><path class="wing left" d="M91 78C67 47 33 54 15 73c26-4 35 11 48 31 8 12 20 18 31 19"/><path class="wing right" d="M91 78c24-31 58-24 76-5-26-4-35 11-48 31-8 12-20 18-31 19"/><path class="body" d="M90 49c17 19 24 42 11 72l-11 20-11-20c-13-30-6-53 11-72Z"/><circle cx="84" cy="67" r="2"/></svg>
+                <svg viewBox="0 0 180 150"><path class="sun" d="M37 91c0-34 22-65 56-65 38 0 60 33 56 69"/><path class="wing left" d="M91 78C67 47 33 54 15 73c26-4 35 11 48 31 8 12 20 18 31 19"/><path class="wing right" d="M91 78c24-31 58-24 76-5-26-4-35 11-48 31-8 12-20 18-31 19"/><path class="body" d="M90 49c17 19 24 42 11 72l-11 20-11-20c-13-30-6-53 11-72Z"/></svg>
               </div>
               <h2>Build your visual library</h2>
               <p>Drop images, videos, text files, or a folder here, or use the Firefox extension. Phoenix copies supported files into its own local library and leaves the source untouched.</p>
@@ -263,7 +269,7 @@
                 <div><span>Source</span><a id="asset-source" target="_blank" rel="noreferrer">—</a></div>
               </section>
               <section class="inspector-section comfyui-section" id="comfyui-section" hidden>
-                <div class="comfyui-heading"><strong>ComfyUI generation data</strong><span>Embedded in this PNG</span></div>
+                <div class="comfyui-heading"><strong>ComfyUI generation data</strong><span>Embedded in this file</span></div>
                 <div id="comfyui-data"></div>
               </section>
               <div class="autosave-status" id="autosave-status" role="status" aria-live="polite"><span>✓</span> Changes save automatically</div>
@@ -283,6 +289,7 @@
     <div class="context-menu" id="asset-context-menu" hidden role="menu">
       <button type="button" data-action="view" role="menuitem">Open in viewer <kbd>Enter</kbd></button>
       <button type="button" data-action="new-window" role="menuitem">Open in new window</button>
+      <button type="button" data-action="external-app" role="menuitem">Open with system application</button>
       <button type="button" data-action="rename" role="menuitem">Rename <kbd>F2</kbd></button>
       <button type="button" data-action="crop" role="menuitem">Crop image…</button>
       <button type="button" data-action="folder" role="menuitem">Add to folder…</button>

@@ -262,10 +262,14 @@ test("external imports, editable text assets, viewer deletion, and ComfyUI metad
   assert.match(markup, /id="text-file-dialog"/);
   assert.match(markup, /data-gallery-action="new-text"/);
   assert.match(markup, /id="comfyui-section"/);
+  assert.match(markup, /Embedded in this file/);
+  assert.match(markup, /data-action="external-app"/);
   assert.match(styles, /\.viewer-text-editor/);
   assert.match(styles, /\.comfyui-prompt/);
   assert.match(model, /pub comfyui: Option<ComfyUiMetadata>/);
   assert.match(library, /fn extract_comfyui_metadata/);
+  assert.match(library, /fn extract_comfyui_video_metadata/);
+  assert.match(library, /Command::new\("ffprobe"\)/);
   assert.match(library, /uncompressed_latin1_text/);
   assert.match(library, /compressed_latin1_text/);
   assert.match(library, /utf8_text/);
@@ -275,6 +279,32 @@ test("external imports, editable text assets, viewer deletion, and ComfyUI metad
   assert.match(native, /fn create_text_asset/);
   assert.match(native, /fn read_text_asset/);
   assert.match(native, /fn update_text_asset/);
+  assert.match(native, /fn open_asset_externally/);
+  assert.match(frontend, /function openAssetExternally/);
+});
+
+test("video download progress cards update in place without restarting their animation", async () => {
+  const frontend = await text("frontend/app.js");
+  const styles = await text("frontend/styles.css");
+  assert.match(frontend, /dataset\.downloadId = id/);
+  assert.match(frontend, /element\.querySelector\("small"\)\.textContent/);
+  assert.doesNotMatch(frontend, /container\.innerHTML = downloads\.map/);
+  assert.match(styles, /\.download-progress\.entering, \.download-progress\.leaving/);
+});
+
+test("video thumbnail frames recover after the viewer closes and toolbar sorting is polished", async () => {
+  const frontend = await text("frontend/app.js");
+  const markup = await text("frontend/index.html");
+  const styles = await text("frontend/styles.css");
+  assert.match(frontend, /function suspendVideoThumbnails/);
+  assert.match(frontend, /function restoreVideoThumbnailFrames/);
+  assert.match(frontend, /requestAnimationFrame\(restoreVideoThumbnailFrames\)/);
+  assert.match(frontend, /video\.addEventListener\("loadeddata"/);
+  assert.doesNotMatch(markup, /<circle cx="84" cy="67" r="2"/);
+  assert.match(markup, /<optgroup label="Date">/);
+  assert.match(markup, /<optgroup label="File size">/);
+  assert.match(styles, /\.sort-control::after/);
+  assert.match(styles, /appearance:\s*none/);
 });
 
 test("viewer reclaims toolbar space, advances after Trash, and uses a compact inspector toggle", async () => {
