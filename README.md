@@ -9,7 +9,7 @@ Phoenix is a visual library for Linux. It gives images, videos, GIFs, and text f
 - Organizes visual files with folders, tags, ratings, search, and sorting.
 - Imports and exports with normal drag and drop on Linux and Wayland.
 - Opens images, GIFs, videos, and text files in a built-in viewer.
-- Captures images from Firefox with the included browser extension.
+- Captures images from Firefox with the included browser extension (To be released in the Firefox extensions).
 - Shows useful generation information stored inside supported AI images.
 - Offers customizable layouts, previews, navigation, and animated themes.
 - Keeps the library local on your computer.
