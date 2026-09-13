@@ -33,7 +33,7 @@ Phoenix can read supported generation details embedded in images and present the
 
 ## Download
 
-The current version is **0.1.35**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
+The current version is **0.1.50**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
 
 - **Ubuntu package:** install the `.deb` file through the software installer.
 - **Portable version:** make the `.AppImage` executable and open it directly.
