@@ -13,6 +13,7 @@ Phoenix is a visual library for Linux. It gives images, videos, GIFs, and text f
 - Shows useful generation information stored inside supported AI images.
 - Offers customizable layouts, previews, navigation, and animated themes.
 - Keeps the library local on your computer.
+- add  remote folders in view only withing the application
 
 <table>
   <tr>
@@ -33,7 +34,7 @@ Phoenix can read supported generation details embedded in images and present the
 
 ## Download
 
-The current version is **0.1.50**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
+The current version is **0.1.52**. Download the Ubuntu package or portable AppImage from [Releases](../../releases/latest).
 
 - **Ubuntu package:** install the `.deb` file through the software installer.
 - **Portable version:** make the `.AppImage` executable and open it directly.
